@@ -4,12 +4,9 @@ A deliberately small, MCP-first personal task system focused on **capture → re
 
 The product is optimized for ADHD-friendly use: very low-friction capture, small attention surfaces, reliable resurfacing, and minimal decision cost.
 
-This repository intentionally contains only the core backend. No frontend, Google Calendar, Apple integration, or custom notification engine yet.
-
+There is no frontend or calendar integration yet. The current repo is the deployable task backend: SQLite + JSON API + MCP.
 
 ## Product invariants
-
-These are constraints, not wishlist items:
 
 - **Capture first:** typing a title + Enter must always be enough.
 - **Metadata is optional:** classification happens only when useful.
@@ -17,64 +14,117 @@ These are constraints, not wishlist items:
 - **Started is meaningful:** multi-session work can be started without being completed.
 - **Snooze is legitimate:** snoozing changes resurfacing, never the real deadline.
 - **Protect important/non-urgent work:** urgent trivia must not consume the whole focus view.
-- **No productivity-system sprawl:** no projects, tags, kanban, habits, collaboration, or rich-text editor until there is a demonstrated need.
+- **No productivity-system sprawl:** no projects, tags, kanban, habits, collaboration, or rich-text editor without a demonstrated need.
 
-## Hosting
-
-**GitHub Pages cannot host the backend in this repository.** Pages only serves static files; this core needs a running Node.js process and writable SQLite storage.
-
-The intended deployment split is:
+## Architecture
 
 ```text
-GitHub Pages (later)
-  └─ static responsive PWA
+future responsive PWA
         │
+        ├── /api/*
+        │
+AI / MCP clients
+        │
+        ├── /mcp
         ▼
-Task API / MCP service
-  └─ Node.js + SQLite on a server with persistent storage
+TaskService
+        │
+      SQLite
 ```
 
-For now, run the MCP server locally. When the PWA is added, it can be deployed to GitHub Pages while the backend is deployed separately. The task domain/service code should remain independent of either transport.
+The same domain service backs local stdio MCP, remote MCP, and the JSON API.
 
 ## Stack
 
-- TypeScript / Node.js 22.5+
-- MCP TypeScript SDK v2, stdio transport
+- TypeScript / Node.js 22+
+- MCP TypeScript SDK v2
+- stateless Streamable HTTP MCP endpoint
+- local stdio MCP endpoint
 - SQLite via `better-sqlite3`
 - Drizzle ORM
-- chrono-node for lightweight natural-language dates
+- `chrono-node` for lightweight natural-language dates
 - Vitest
 
-## Run
+## Local development
 
 ```bash
 npm install
-npm test
-npm run mcp
-```
-
-The database defaults to `./data/tasks.sqlite` and is bootstrapped automatically on first run.
-
-Optional:
-
-```bash
-npm run seed       # add 4 development tasks to an empty DB
 npm run typecheck
-npm run build
-npm start          # run compiled dist/mcp/server.js
+npm test
+npm run dev:mcp
 ```
 
-Override the database file with:
+For the HTTP server, set one private bearer token:
 
 ```bash
-DB_FILE_NAME=/path/to/tasks.sqlite npm run mcp
+export TASK_INATOR_TOKEN="$(openssl rand -hex 32)"
+npm run dev
 ```
 
-Date parsing uses the Node process's local timezone. On a personal Mac this follows the machine timezone. You can explicitly set it when needed, e.g. `TZ=Europe/Prague npm run mcp`.
+Then:
 
-## MCP client config
+```text
+GET  /healthz             public health check
+GET  /api/focus           bearer auth
+GET  /api/tasks           bearer auth
+POST /api/tasks           bearer auth
+GET  /api/tasks/:id       bearer auth
+PATCH /api/tasks/:id      bearer auth
+POST /api/tasks/:id/start
+POST /api/tasks/:id/complete
+POST /api/tasks/:id/snooze
+POST /mcp                 remote MCP
+```
 
-After `npm install`, configure an MCP client to launch the server from this repository:
+Use:
+
+```http
+Authorization: Bearer <TASK_INATOR_TOKEN>
+```
+
+The database defaults to `./data/tasks.sqlite` and is bootstrapped automatically.
+
+## Single-user production deployment
+
+The intended initial host is `tasks.mhlmj.com` on the existing kmanweb infrastructure.
+
+This is intentionally one app container and one SQLite file. No Postgres, Redis, queue, or account system.
+
+```bash
+cp .env.example .env
+# replace TASK_INATOR_TOKEN with: openssl rand -hex 32
+mkdir -p data
+sudo chown 1000:1000 data
+
+docker compose up -d --build
+docker compose ps
+curl http://127.0.0.1:3000/healthz   # only if temporarily publishing a host port for debugging
+```
+
+`docker-compose.yml` does **not** publish the application port to the host. The app joins the existing external Docker network `reverse-proxy` and exposes port `3000` there.
+
+The stable Docker alias is:
+
+```text
+tasks-mhlmj-com
+```
+
+With `ojs-inator/nginx-toolkit`, apply the public route using the running container rather than writing nginx config manually:
+
+```bash
+nginx apply \
+  --domain tasks.mhlmj.com \
+  --app service \
+  --container task-inator \
+  --container-port 3000 \
+  --cdn-provider cloudflare
+
+nginx smoke --domain tasks.mhlmj.com
+```
+
+The toolkit and application must both use the external `reverse-proxy` network.
+
+## Local MCP client config
 
 ```json
 {
@@ -88,7 +138,15 @@ After `npm install`, configure an MCP client to launch the server from this repo
 }
 ```
 
-## Tools
+For remote clients, use:
+
+```text
+https://tasks.mhlmj.com/mcp
+```
+
+with the bearer token configured by the client.
+
+## MCP tools
 
 - `create_task`
 - `list_tasks`
@@ -99,90 +157,48 @@ After `npm install`, configure an MCP client to launch the server from this repo
 - `snooze_task`
 - `get_focus`
 
-`list_tasks` supports filters for `status`, `bucket`, `importance`, `urgency`, `dueBefore`, `dueAfter`, plus views: `today`, `tomorrow`, `this_week`, `urgent`, `important`, `overdue`, `inbox`.
+Only `title` is required for capture.
 
-## Example calls
+`list_tasks` supports filters for `status`, `bucket`, `importance`, `urgency`, `dueBefore`, `dueAfter`, and views `today`, `tomorrow`, `this_week`, `urgent`, `important`, `overdue`, `inbox`.
 
-Create with almost no metadata:
+## Focus behavior
 
-```json
-{
-  "name": "create_task",
-  "arguments": {
-    "title": "Reply to John"
-  }
-}
-```
-
-Create an urgent task with natural-language dates:
-
-```json
-{
-  "name": "create_task",
-  "arguments": {
-    "title": "Reply to John",
-    "importance": "important",
-    "urgency": "urgent",
-    "remindAt": "tomorrow morning",
-    "reminderMode": "persistent"
-  }
-}
-```
-
-Start a multi-session task:
-
-```json
-{
-  "name": "start_task",
-  "arguments": {
-    "task_id": "<uuid>"
-  }
-}
-```
-
-Snooze without moving the deadline:
-
-```json
-{
-  "name": "snooze_task",
-  "arguments": {
-    "task_id": "<uuid>",
-    "until": "tomorrow morning"
-  }
-}
-```
-
-Ask what deserves attention now:
-
-```json
-{
-  "name": "get_focus",
-  "arguments": {}
-}
-```
-
-## Focus heuristic
-
-`get_focus` deliberately returns separate groups instead of one giant sorted list:
+`get_focus` returns separate, intentionally small groups:
 
 - `critical`: overdue and/or urgent work
-- `today`: due, starting, reminding, or explicitly bucketed today
-- `should_start`: protected space for important non-urgent work that should begin soon
+- `today`: work relevant today
+- `should_start`: protected space for important non-urgent work
 - `waiting`: explicit waiting tasks
 
-Within each group, a simple score considers overdue state, urgency, importance, deadline proximity, whether important/urgent work is still unstarted, start time, and repeated snoozes.
+A future `remindAt` suppresses a task until that time. Snoozing changes `remindAt`; it never changes `dueAt`.
 
-A future `remindAt` suppresses a task from focus until that moment. Snoozing never changes `dueAt`.
+## Dates and timezone
 
-## Schema notes
+Dates are stored as ISO-8601 strings. `dueAt`, `remindAt`, and `startAt` stay independent.
 
-Dates are stored as ISO-8601 strings. `dueAt`, `remindAt`, and `startAt` are intentionally independent.
+Natural-language inputs include phrases such as `tomorrow morning`, `Friday`, `in 2 hours`, `this weekend`, and `next week`.
 
-MVP-only internal fields `snoozeCount`, `lastSnoozedAt`, and `deletedAt` are included now because prioritization and future soft-delete support need them; no delete MCP tool is exposed yet.
+Set `TZ` for the server process so those phrases are interpreted in the user's local timezone. The production template currently uses `Europe/Prague`.
 
-Drizzle Kit is configured for later migration generation:
+## Useful commands
 
 ```bash
-npm run db:generate
-npm run db:push
+npm run dev          # HTTP API + remote MCP
+npm run dev:mcp      # local stdio MCP
+npm run seed         # add development examples
+npm run typecheck
+npm test
+npm run build
+npm start            # compiled HTTP server
+npm run start:mcp    # compiled stdio MCP
 ```
+
+## Persistence
+
+Production SQLite lives at:
+
+```text
+./data/tasks.sqlite
+```
+
+The Docker container sees it at `/app/data/tasks.sqlite`. Back up the host `data/` directory regularly.
