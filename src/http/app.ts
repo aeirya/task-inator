@@ -74,13 +74,13 @@ function authorized(req: IncomingMessage, token: string): boolean {
 }
 
 function taskId(pathname: string): string | null {
-  const match = pathname.match(/^\/api\/tasks\/([^/]+)$/);
-  return match ? decodeURIComponent(match[1]) : null;
+  const raw = pathname.match(/^\/api\/tasks\/([^/]+)$/)?.[1];
+  return raw ? decodeURIComponent(raw) : null;
 }
 
 function actionTaskId(pathname: string, action: 'start' | 'complete' | 'snooze'): string | null {
-  const match = pathname.match(new RegExp(`^/api/tasks/([^/]+)/${action}$`));
-  return match ? decodeURIComponent(match[1]) : null;
+  const raw = pathname.match(new RegExp(`^/api/tasks/([^/]+)/${action}$`))?.[1];
+  return raw ? decodeURIComponent(raw) : null;
 }
 
 async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, service: TaskService): Promise<void> {
