@@ -1,0 +1,32 @@
+services:
+  task-inator:
+    container_name: task-inator
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DB_FILE_NAME: /app/data/tasks.sqlite
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "3000"
+    networks:
+      reverse-proxy:
+        aliases:
+          - tasks-mhlmj-com
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  reverse-proxy:
+    external: true
+    name: reverse-proxy
