@@ -2,6 +2,8 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTaskHttpServer } from '../src/http/app.js';
 
+process.env.DB_FILE_NAME = ':memory:';
+
 const token = 'test-token-that-is-long-enough-123456';
 const server = createTaskHttpServer(token);
 let baseUrl: string;
