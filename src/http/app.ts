@@ -1,5 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { createMcpHandler } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import * as z from 'zod/v4';
@@ -16,6 +18,7 @@ import {
 import type { TaskService } from '../core/task-service.js';
 
 const MAX_BODY_BYTES = 64 * 1024;
+const publicDirectory = resolve(process.cwd(), 'public');
 
 const optionalTaskFields = {
   notes: z.string().nullable().optional(),
@@ -52,6 +55,24 @@ function json(res: ServerResponse, status: number, body: unknown): void {
     'cache-control': 'no-store',
   });
   res.end(payload);
+}
+
+async function serveClient(res: ServerResponse, pathname: string): Promise<boolean> {
+  const relativePath = pathname === '/' ? 'index.html' : pathname.slice(1);
+  const filePath = resolve(publicDirectory, relativePath);
+  if (!filePath.startsWith(`${publicDirectory}/`)) return false;
+
+  try {
+    const body = await readFile(filePath);
+    const contentType = filePath.endsWith('.css') ? 'text/css; charset=utf-8'
+      : filePath.endsWith('.js') ? 'application/javascript; charset=utf-8'
+      : 'text/html; charset=utf-8';
+    res.writeHead(200, { 'content-type': contentType, 'cache-control': 'no-store' });
+    res.end(body);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function readJson(req: IncomingMessage): Promise<unknown> {
@@ -152,6 +173,7 @@ export function createTaskHttpServer(token = process.env.TASK_INATOR_TOKEN) {
     }
 
     if (url.pathname !== '/mcp' && !url.pathname.startsWith('/api/')) {
+      if (req.method === 'GET' && await serveClient(res, url.pathname)) return;
       json(res, 404, { error: 'not_found' });
       return;
     }

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#18251d">
+    <title>Task-inator</title>
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <main>
+      <header><div><p class="eyebrow">PERSONAL TASKS</p><h1>Task-inator</h1></div><button id="settings" aria-label="Token settings">⚙</button></header>
+      <section id="token-panel" class="panel hidden"><label>Bearer token<input id="token" type="password" autocomplete="off" placeholder="Paste your task token"></label><div><button id="save-token">Save token</button><button id="clear-token" class="quiet">Forget</button></div><p>Your token is stored only in this browser.</p></section>
+      <section id="capture" class="panel"><form id="capture-form"><label for="title">What needs doing?</label><div class="capture-row"><input id="title" required autocomplete="off" placeholder="Capture a task…"><button>Add</button></div></form></section>
+      <p id="message" role="status"></p>
+      <section id="focus" class="hidden"><div class="section-head"><h2>Focus</h2><button id="refresh" class="quiet">Refresh</button></div><div id="groups"></div></section>
+      <section id="empty" class="panel"><h2>Set up your token</h2><p>Use the settings button to connect this private client to your task service.</p></section>
+    </main>
+    <template id="task-template"><article class="task"><div><h3></h3><p class="meta"></p></div><div class="actions"><button class="start">Start</button><button class="snooze quiet">Later</button><button class="complete">Done</button></div></article></template>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
